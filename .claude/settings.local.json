@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.jodrik.nl)",
+      "WebFetch(domain:forum.support.xerox.com)",
+      "WebFetch(domain:zenoss-users.zenoss.narkive.com)",
+      "WebFetch(domain:www.oidview.com)",
+      "WebFetch(domain:mibbrowser.online)",
+      "WebFetch(domain:kb.paessler.com)",
+      "WebFetch(domain:helpdesk.paessler.com)",
+      "WebFetch(domain:oidref.com)",
+      "WebFetch(domain:mibs.observium.org)",
+      "WebFetch(domain:h30434.www3.hp.com)",
+      "WebFetch(domain:gist.github.com)",
+      "WebFetch(domain:www.steadyprint.com)",
+      "WebFetch(domain:www.circitor.fr)",
+      "WebFetch(domain:community.home-assistant.io)",
+      "WebFetch(domain:support.nagios.com)",
+      "WebFetch(domain:app.jetadvice.com)",
+      "WebFetch(domain:ixnfo.com)",
+      "WebFetch(domain:support.hp.com)",
+      "WebFetch(domain:technicallyepic.wordpress.com)",
+      "WebFetch(domain:kaas.hpcloud.hp.com)",
+      "WebFetch(domain:secure.n-able.com)",
+      "WebFetch(domain:documentation.n-able.com)",
+      "WebFetch(domain:community.lansweeper.com)",
+      "WebFetch(domain:communitybackup.lansweeper.com)",
+      "WebFetch(domain:www.gen.cam.ac.uk)",
+      "WebFetch(domain:www.alvestrand.no)",
+      "WebFetch(domain:forum.mikrotik.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(go build:*)",
+      "Bash(go test:*)"
+    ]
+  }
+}

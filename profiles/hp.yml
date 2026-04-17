@@ -1,0 +1,55 @@
+# profiles/hp.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil HP — HP Inc. / Hewlett-Packard Enterprise
+# Enterprise OID prefix: 1.3.6.1.4.1.11
+# ─────────────────────────────────────────────────────────────────────────────
+
+profile_id: hp
+brand: HP
+description: "HP LaserJet / OfficeJet / Color LaserJet — HP Enterprise MIB + RFC 3805"
+
+# El prefijo con punto final evita colisiones con OIDs de otros fabricantes
+# cuyo enterprise ID empiece con "11" (ej. 110, 1100...).
+match_oid_patterns:
+  - "1.3.6.1.4.1.11."
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # hp_device_id contiene un string "MDL:model;SN:serial;CMD:..." que el
+  # parser parseHPIdentificationString desglosa automáticamente.
+  identification:
+    hp_device_id:  "1.3.6.1.4.1.11.2.3.9.1.1.7.0"   # HP Device ID string (MDL/SN/CMD)
+    model:         "1.3.6.1.2.1.43.5.1.1.16.1"        # prtGeneralCurrentOperator (RFC 3805)
+    serial_number: "1.3.6.1.2.1.43.5.1.1.17.1"        # prtGeneralSerialNumber (RFC 3805)
+    hostname:      "1.3.6.1.2.1.1.5.0"                # sysName
+    location:      "1.3.6.1.2.1.1.6.0"                # sysLocation
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # HP expone contadores detallados a través de su MIB privada (OID 11.2.3.9.4.2.1.4).
+  counters:
+    total_pages:   "1.3.6.1.2.1.43.10.2.1.4.1.1"             # prtMarkerLifeCount (RFC 3805)
+    mono_pages:    "1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.2.54.0"   # HP total mono impressions
+    color_pages:   "1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.2.7.0"    # HP total color impressions
+    copy_pages:    "1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.2.22.0"   # HP copy page count
+    engine_cycles: "1.3.6.1.4.1.11.2.3.9.4.2.1.4.1.2.53.0"   # HP engine cycle counter
+
+  # ── Estado ───────────────────────────────────────────────────────────────
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # HP implementa RFC 3805 prtMarkerSuppliesTable de forma completa.
+  # Los equipos JetDirect exponen correctamente las columnas .6 / .9 / .8.
+  supplies:
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  # HP JetDirect típicamente expone la LAN en el índice 2 (índice 1 = loopback).
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.2"           # ifPhysAddress iface 2 (LAN)
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"           # ipAdEntAddr

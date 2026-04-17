@@ -1,0 +1,46 @@
+# ==========================================
+# AGENT SNMP - CLOUD MANAGED CONFIGURATION
+# ==========================================
+
+# Modo de operación
+mode: cloud-managed
+
+# 1. IDENTIDAD Y CONEXIÓN (LO MÁS IMPORTANTE)
+uploader:
+  enabled: true
+  cloud_url: "http://localhost:8000"  # Tu API Laravel
+  agent_key: "QCMGC-RLKNG-EGJQZ"       # La llave que te da el tenant
+  interval_secs: 30                   # Cada cuánto subir archivos de la cola
+  max_backoff_secs: 300
+
+# 2. ALMACENAMIENTO LOCAL (Buffer)
+sinks:
+  file:
+    enabled: true
+    path: "./queue"  # Donde se guardan los JSONs antes de subir
+
+# 3. LOGGING
+logging:
+  verbose: true
+  level: "info"
+
+# ==========================================
+# VALORES DE RESPALDO (FALLBACKS)
+# Se usan SOLO si no se puede contactar a la central
+# ==========================================
+snmp:
+  community: "public"
+  version: "2c"
+  port: 161
+  timeout_ms: 2000
+  retries: 2
+
+discovery:
+  enabled: true
+  # Dejar vacío o poner un rango de emergencia
+  ip_range: "" 
+  max_concurrent: 10
+
+collector:
+  enabled: true
+  delay_ms: 50

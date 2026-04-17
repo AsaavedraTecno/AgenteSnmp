@@ -1,0 +1,65 @@
+# profiles/samsung.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil Samsung — Samsung Electronics (absorbido por HP en 2017)
+# Enterprise OID prefix: 1.3.6.1.4.1.236
+# ─────────────────────────────────────────────────────────────────────────────
+# NOTA: Los equipos Samsung modernos (serie SL-) pueden responder también
+# al prefijo HP (1.3.6.1.4.1.11) si tienen firmware actualizado post-adquisición.
+# Este perfil cubre los dispositivos con firmware Samsung nativo.
+
+profile_id: samsung
+brand: Samsung
+description: "Samsung ML / CLX / SL series — Samsung Enterprise MIB + RFC 3805"
+
+match_oid_patterns:
+  - "1.3.6.1.4.1.236."
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # Samsung expone modelo y serial en su MIB privada (OID 236.11.5.1.1.1).
+  identification:
+    model:
+      - "1.3.6.1.4.1.236.11.5.11.53.31.1.4.0"  # Samsung model name
+      - "1.3.6.1.4.1.236.11.5.1.1.1.4.0"       # General model name
+      - "1.3.6.1.4.1.236.11.5.1.1.1.1.0"       # El genérico Samsung
+    serial_number: 
+      - "1.3.6.1.4.1.236.11.5.1.1.1.4.0"      # Serial samsung nuevas gen|
+      - "1.3.6.1.4.1.236.11.5.1.1.1.6.0"      # El genérico Samsung
+      - "1.3.6.1.2.1.43.5.1.1.17.1"           # RFC Universal
+    hostname:      "1.3.6.1.2.1.1.5.0"                # sysName
+    location:      "1.3.6.1.2.1.1.6.0"                # sysLocation
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # Samsung MIB privada (OID 236.11.5.1.1.3) expone contadores granulares.
+  # No hay un OID nativo de color_pages; se sintetiza desde total - mono.
+  counters:
+    # .27.0 es el total real Samsung (confirmado: 14688 = billing page)
+    # RFC .4.1.1 también devuelve el mismo valor; se mantiene como fallback en el builder.
+    total_pages:   "1.3.6.1.4.1.236.11.5.1.1.3.27.0"    # Samsung total impressions (confirmado: 14688 = billing page)
+    # .29.0 = 0 en M332x/M402x — la impresora monocromática no lo usa.
+    # consolidateCounters sintetiza mono = total cuando mono == 0.
+    mono_pages:    "1.3.6.1.4.1.236.11.5.1.1.3.29.0"    # Samsung mono (0 en M332x/M402x, válido en otras series)
+    # .2.0 = 937985 — valor sin relación con páginas impresas; OID eliminado hasta identificar su significado.
+    tray1_pages:   "1.3.6.1.4.1.236.11.5.1.1.3.33.0"    # Páginas alimentadas desde Bandeja 1 (confirmado: 12283)
+    mp_pages:      "1.3.6.1.4.1.236.11.5.1.1.3.31.0"    # Páginas alimentadas desde MP Tray (confirmado: 2405)
+
+  # ── Estado ───────────────────────────────────────────────────────────────
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # Samsung implementa RFC 3805 para suministros. Los cartuchos CRUM
+  # (Customer Replaceable Unit Monitor) exponen también datos de serial
+  # en la descripción; classifySupply los extrae correctamente.
+  supplies:
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.1"           # ifPhysAddress iface 1 (LAN)
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"           # ipAdEntAddr

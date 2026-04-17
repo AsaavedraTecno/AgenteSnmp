@@ -1,0 +1,60 @@
+# profiles/kyocera.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil Kyocera — Kyocera Document Solutions
+# Enterprise OID prefix: 1.3.6.1.4.1.1347
+# ─────────────────────────────────────────────────────────────────────────────
+# Aplica a: TASKalfa, ECOSYS, FS series.
+# Kyocera distingue entre impresiones (prints) y copias (copies) por modo
+# de color, exponiendo 6 contadores granulares en su MIB privada (1347.42.3).
+
+profile_id: kyocera
+brand: Kyocera
+description: "Kyocera TASKalfa / ECOSYS / FS series — Kyocera Enterprise MIB + RFC 3805"
+
+match_oid_patterns:
+  - "1.3.6.1.4.1.1347."
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # Kyocera usa los OIDs RFC 3805 estándar para modelo y serial.
+  identification:
+    model:         "1.3.6.1.2.1.43.5.1.1.17.1"   # prtGeneralPrinterName (RFC 3805)
+    serial_number: "1.3.6.1.2.1.43.5.1.1.5.1"    # prtGeneralSerialNumber (RFC 3805)
+    hostname:      "1.3.6.1.2.1.1.5.0"            # sysName
+    location:      "1.3.6.1.2.1.1.6.0"            # sysLocation
+    sys_descr:     "1.3.6.1.2.1.1.1.0"            # sysDescr
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # Kyocera MIB privada (1347.42.3) desglosa impresiones y copias por modo:
+  #   .1.1.1.x.1 = impresiones  |  .1.1.2.x.1 = copias
+  #   sufijo .1 = mono          |  sufijo .3 = color
+  # Esto permite calcular totales exactos sin síntesis.
+  counters:
+    total_pages:   "1.3.6.1.4.1.1347.42.3.1.1.1.1.1"     # Kyocera total page count
+    total_copies:  "1.3.6.1.4.1.1347.42.3.1.1.1.1.2"     # Kyocera total copy count
+    mono_pages:    "1.3.6.1.4.1.1347.42.3.1.2.1.1.1.1"   # Kyocera mono print pages
+    mono_copies:   "1.3.6.1.4.1.1347.42.3.1.2.1.1.2.1"   # Kyocera mono copy pages
+    color_pages:   "1.3.6.1.4.1.1347.42.3.1.2.1.1.1.3"   # Kyocera color print pages
+    color_copies:  "1.3.6.1.4.1.1347.42.3.1.2.1.1.2.3"   # Kyocera color copy pages
+    engine_cycles: "1.3.6.1.4.1.1347.43.10.1.1.12.1.1"   # Kyocera drum/engine cycle counter
+
+  # ── Estado ───────────────────────────────────────────────────────────────
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # Kyocera implementa RFC 3805 de forma estándar. Los equipos ECOSYS
+  # reportan tóner y drum por separado, cada uno con su propio índice.
+  # Los drums Kyocera suelen tener raw_max en ciclos, no en gramos.
+  supplies:
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.1"           # ifPhysAddress iface 1 (LAN)
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"           # ipAdEntAddr

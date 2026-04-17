@@ -1,0 +1,54 @@
+# profiles/epson.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil Epson — Seiko Epson Corporation
+# Enterprise OID prefix: 1.3.6.1.4.1.1248
+# ─────────────────────────────────────────────────────────────────────────────
+# Aplica a: WorkForce, EcoTank (ET), Expression, SureColor series.
+# Epson usa su MIB privada (1248.1.2.2) para contadores detallados;
+# los suministros siguen el estándar RFC 3805.
+
+profile_id: epson
+brand: Epson
+description: "Epson WorkForce / EcoTank / SureColor — Epson Enterprise MIB + RFC 3805"
+
+match_oid_patterns:
+  - "1.3.6.1.4.1.1248."
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # Epson utiliza los OIDs estándar RFC 3805 para modelo y serial.
+  identification:
+    model:         "1.3.6.1.2.1.43.5.1.1.17.1"   # prtGeneralPrinterName (RFC 3805)
+    serial_number: "1.3.6.1.2.1.43.5.1.1.5.1"    # prtGeneralSerialNumber (RFC 3805)
+    hostname:      "1.3.6.1.2.1.1.5.0"            # sysName
+    location:      "1.3.6.1.2.1.1.6.0"            # sysLocation
+    sys_descr:     "1.3.6.1.2.1.1.1.0"            # sysDescr
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # Epson MIB privada (1248.1.2.2.27 = impresiones, 1248.1.2.2.44 = ciclos).
+  # No hay un OID de total_pages explícito; se sintetiza como mono + color.
+  counters:
+    mono_pages:    "1.3.6.1.4.1.1248.1.2.2.27.1.1.3.1.1"   # Epson mono impressions
+    color_pages:   "1.3.6.1.4.1.1248.1.2.2.27.1.1.4.1.1"   # Epson color impressions
+    engine_cycles: "1.3.6.1.4.1.1248.1.2.2.44.1.1.2.1"      # Epson engine cycle counter
+
+  # ── Estado ───────────────────────────────────────────────────────────────
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # Epson implementa RFC 3805 para suministros. Los equipos EcoTank (tinta
+  # en depósito) reportan los niveles de tinta como valores absolutos (µL).
+  # IsMeasurable será true cuando raw_max > 0, permitiendo calcular el % real.
+  supplies:
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.1"           # ifPhysAddress iface 1 (LAN)
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"           # ipAdEntAddr

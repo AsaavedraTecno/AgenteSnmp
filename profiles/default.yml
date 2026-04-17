@@ -1,0 +1,73 @@
+# profiles/default.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil fallback universal — RFC 3805 (Printer MIB) + Host Resources MIB
+# ─────────────────────────────────────────────────────────────────────────────
+# Este perfil se carga cuando FindProfile no encuentra ningún otro coincidente.
+# match_oid_patterns está vacío porque NUNCA gana en matching activo.
+
+profile_id: generic
+brand: Generic
+description: "Standard RFC 3805 & Host Resources MIB — Fallback universal"
+
+match_oid_patterns: []
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # RFC 1213 System MIB (1.3.6.1.2.1.1) + Host Resources MIB (1.3.6.1.2.1.25)
+  # + RFC 3805 Printer MIB (1.3.6.1.2.1.43)
+  identification:
+    sys_descr:     "1.3.6.1.2.1.1.1.0"            # sysDescr: descripción libre del sistema
+    hostname:      "1.3.6.1.2.1.1.5.0"            # sysName: nombre del host
+    location:      "1.3.6.1.2.1.1.6.0"            # sysLocation: ubicación física
+    contact:       "1.3.6.1.2.1.1.4.0"            # sysContact: responsable del dispositivo
+    uptime:        "1.3.6.1.2.1.1.3.0"            # sysUpTime: tiempo encendido (timeticks)
+    model:         "1.3.6.1.2.1.25.3.2.1.3.1"     # hrDeviceDescr: modelo (Host Resources MIB)
+    model_alt:     "1.3.6.1.2.1.43.5.1.1.17.1"    # prtGeneralPrinterName (RFC 3805)
+    serial_number: "1.3.6.1.2.1.43.5.1.1.5.1"     # prtGeneralSerialNumber (RFC 3805)
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # RFC 3805 prtMarkerTable (1.3.6.1.2.1.43.10.2.1)
+  counters:
+    total_pages:   "1.3.6.1.2.1.43.10.2.1.4.1.1"  # prtMarkerLifeCount: contador vitalicio de impresiones
+    engine_cycles: "1.3.6.1.2.1.43.10.2.1.4.1.1"  # alias semántico — mismo OID, distinto significado lógico
+
+  # ── Estado del dispositivo ───────────────────────────────────────────────
+  # Host Resources MIB + RFC 3805 Alert Table
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus: 2=running, 3=warning, 5=error
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # RFC 3805 prtMarkerSuppliesTable (1.3.6.1.2.1.43.11.1.1)
+  #
+  # El motor hace SNMP WALK sobre cada OID base. Los índices resultantes
+  # (ej. ".1.1", ".1.2") identifican cada suministro de forma unívoca
+  # y son la fuente del campo SupplyData.ID determinista.
+  supplies:
+    # Columna .6 → prtMarkerSuppliesDescription
+    # Retorna el nombre textual del suministro (ej. "Black Toner Cartridge").
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"
+
+    # Columna .9 → prtMarkerSuppliesLevel (nivel actual)
+    # -3 = almostEmpty (presente pero no cuantificable en %)
+    # -2 = capacityUnknown (el dispositivo no expone el nivel)
+    # >0 = cantidad absoluta en unidades del fabricante (µg, hojas, etc.)
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"
+
+    # Columna .8 → prtMarkerSuppliesMaxCapacity
+    # -2 = el dispositivo no reporta capacidad máxima
+    # >0 = capacidad máxima en las mismas unidades que base_level_oid
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  # IF-MIB (1.3.6.1.2.1.2.2.1) + IP-MIB (1.3.6.1.2.1.4.20)
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.1"           # ifPhysAddress: MAC de la interfaz 1
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"          # ipAdEntAddr: dirección IP asignada
+
+  # ── Historial de Alertas Críticas / Atascos ──────────────────────────────
+  hardware_alerts:
+    # La columna .8 contiene la descripción en texto del error (ej. "Paper Jam in Tray 2")
+    description_oid: "1.3.6.1.2.1.43.18.1.1.8"

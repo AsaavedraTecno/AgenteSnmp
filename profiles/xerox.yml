@@ -1,0 +1,69 @@
+# profiles/xerox.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# Perfil Xerox — Xerox Corporation
+# Enterprise OID prefix: 1.3.6.1.4.1.253
+# ─────────────────────────────────────────────────────────────────────────────
+# Aplica a: WorkCentre, VersaLink, AltaLink, Phaser series.
+# Xerox expone contadores detallados en su MIB privada (253.8.53.13.2.1.6).
+# El sufijo .20.x distingue el tipo de contador:
+#   .20.1   = total  |  .20.101 = mono  |  .20.102 = color
+
+profile_id: xerox
+brand: Xerox
+description: "Xerox WorkCentre / VersaLink / AltaLink / Phaser — Xerox Enterprise MIB + RFC 3805"
+
+match_oid_patterns:
+  - "1.3.6.1.4.1.253."
+
+oids:
+
+  # ── Identificación ───────────────────────────────────────────────────────
+  # Xerox usa RFC 3805 para modelo y serial, igual que el perfil genérico.
+  identification:
+    model:
+      - "1.3.6.1.4.1.253.8.53.3.2.1.2.1"   # Xerox MIB privada — VersaLink / AltaLink / WorkCentre
+      - "1.3.6.1.2.1.25.3.2.1.3.1"          # hrDeviceDescr (RFC — fallback seguro)
+    serial_number:
+      - "1.3.6.1.2.1.43.5.1.1.17.1"         # prtGeneralSerialNumber (RFC 3805)
+    hostname:      "1.3.6.1.2.1.1.5.0"            # sysName
+    location:      "1.3.6.1.2.1.1.6.0"            # sysLocation
+    sys_descr:     "1.3.6.1.2.1.1.1.0"            # sysDescr
+
+  # ── Contadores de páginas ────────────────────────────────────────────────
+  # Xerox MIB privada (253.8.53.13.2.1.6.1.20) para contadores granulares.
+  # engine_cycles apunta al mismo OID que total_pages: Xerox no expone
+  # un contador de ciclos de motor separado en la mayoría de sus modelos.
+  counters:
+    total_pages:   "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.1"    # Xerox total impressions
+    mono_pages:    "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.101"   # Xerox mono impressions
+    color_pages:   "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.102"   # Xerox color impressions
+
+    engine_cycles: "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.200"  # Ciclos Motor Total
+    engine_mono:   "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.201"  # Ciclos Motor Negro
+    engine_color:  "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.202"  # Ciclos Motor Color
+
+    # 3. Uso de Papel (Eficiencia y Dúplex)
+    duplex_mono:   "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.9"    # Dúplex Negro
+    duplex_color:  "1.3.6.1.4.1.253.8.53.13.2.1.6.1.20.31"   # Dúplex Color
+
+    #.20.201 = 55019 (Impresiones Monocromo Reales)
+    #.20.202 = 149840 (Impresiones Color Reales)
+
+
+  # ── Estado ───────────────────────────────────────────────────────────────
+  status:
+    device_status:  "1.3.6.1.2.1.25.3.2.1.5.1"    # hrDeviceStatus
+    printer_status: "1.3.6.1.2.1.43.13.4.1.7.1.1"  # prtAlertSeverityLevel
+    error_state:    "1.3.6.1.2.1.43.8.2.1.13.1.1"  # prtInputStatus
+
+  # ── Suministros ──────────────────────────────────────────────────────────
+  # Xerox implementa RFC 3805 prtMarkerSuppliesTable de forma completa.
+  supplies:
+    base_desc_oid:  "1.3.6.1.2.1.43.11.1.1.6"   # prtMarkerSuppliesDescription
+    base_level_oid: "1.3.6.1.2.1.43.11.1.1.9"   # prtMarkerSuppliesLevel
+    base_max_oid:   "1.3.6.1.2.1.43.11.1.1.8"   # prtMarkerSuppliesMaxCapacity
+
+  # ── Red ──────────────────────────────────────────────────────────────────
+  network:
+    mac_address: "1.3.6.1.2.1.2.2.1.6.1"           # ifPhysAddress iface 1 (LAN)
+    ip_address:  "1.3.6.1.2.1.4.20.1.1.1"           # ipAdEntAddr

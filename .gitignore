@@ -1,0 +1,14 @@
+# Binaries
+*.exe
+
+# Runtime data
+queue/
+state/
+
+# Logs
+*.log
+debug_log.txt
+
+# OS
+.DS_Store
+Thumbs.db
