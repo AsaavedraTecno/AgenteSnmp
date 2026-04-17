@@ -39,13 +39,16 @@ type Runner struct {
 	outputDir    string
 }
 
-// NewRunner inicializa el runner una sola vez
-func NewRunner(source telemetry.AgentSource, outputDir string) *Runner {
+// NewRunner inicializa el runner una sola vez.
+// outputDir: directorio de cola (C:\ProgramData\AgentSNMP).
+// stateDir:  directorio de estado entre ciclos — separado de la cola para
+//            evitar que el uploader procese archivos de estado como telemetría.
+func NewRunner(source telemetry.AgentSource, outputDir, stateDir string) *Runner {
 	return &Runner{
 		agentSource:  source,
 		builder:      telemetry.NewBuilder(source),
 		serializer:   serializer.NewSerializer(),
-		stateManager: collector.NewStateManager("state"), // Mantiene el estado de contadores entre loops
+		stateManager: collector.NewStateManager(stateDir),
 		outputDir:    outputDir,
 	}
 }

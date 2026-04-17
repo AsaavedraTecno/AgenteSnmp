@@ -3,24 +3,83 @@ package telemetry
 import (
 	"time"
 
-	"github.com/asaavedra/agent-snmp/pkg/collector"
 	"github.com/asaavedra/agent-snmp/pkg/models"
 )
 
-// Telemetry es el payload atómico que representa el estado de UNA impresora
+// Telemetry es el payload atómico que representa el estado de UNA impresora.
 type Telemetry struct {
-	SchemaVersion string                      `json:"schema_version"`
-	EventID       string                      `json:"event_id"`
-	CollectedAt   time.Time                   `json:"collected_at"`
-	Source        AgentSource                 `json:"source"`
-	Printer       PrinterInfo                 `json:"printer"`
-	Counters      *collector.CountersSnapshot `json:"counters"`
-	// Supplies usa models.SupplyData directamente: así raw_level, raw_max,
-	// is_measurable y color viajan intactos al JSON sin ninguna conversión intermedia.
-	Supplies      []models.SupplyData         `json:"supplies,omitempty"`
-	Alerts        []AlertInfo                 `json:"alerts,omitempty"`
-	DeviceAlerts  []string                    `json:"device_alerts,omitempty"`
-	Metrics       *MetricsInfo                `json:"metrics,omitempty"`
+	SchemaVersion string          `json:"schema_version"`
+	EventID       string          `json:"event_id"`
+	CollectedAt   time.Time       `json:"collected_at"`
+	Source        AgentSource     `json:"source"`
+	Printer       PrinterInfo     `json:"printer"`
+	Counters      *CountersOutput `json:"counters"`
+	// Supplies usa models.SupplyData directamente: raw_level, raw_max,
+	// is_measurable y color viajan intactos al JSON sin conversión intermedia.
+	Supplies     []models.SupplyData `json:"supplies,omitempty"`
+	Alerts       []AlertInfo         `json:"alerts,omitempty"`
+	DeviceAlerts []string            `json:"device_alerts,omitempty"`
+	Metrics      *MetricsInfo        `json:"metrics,omitempty"`
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Structs de salida jerárquicos para la sección "counters"
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Estos tipos solo existen para definir el shape del JSON. La lógica interna
+// del colector sigue usando NormalizedCounters (mapa plano) y CountersInfo;
+// la transformación ocurre en buildCounters() del builder.
+
+// CountersOutput es la raíz del bloque "counters" en el JSON de telemetría.
+type CountersOutput struct {
+	Absolute      CountersAbsoluteOut      `json:"absolute"`
+	LogicalMatrix CountersLogicalMatrixOut `json:"logical_matrix"`
+	HardwareUsage CountersHardwareUsageOut `json:"hardware_usage"`
+	Confidence    string                   `json:"confidence,omitempty"`
+}
+
+// CountersAbsoluteOut contiene los totales brutos de impresión.
+type CountersAbsoluteOut struct {
+	Total int64 `json:"total"`
+	Mono  int64 `json:"mono"`
+	Color int64 `json:"color"`
+}
+
+// CountersByFunctionOut desglosa por función lógica (imprimir, copiar, fax, informes).
+type CountersByFunctionOut struct {
+	Print    int64 `json:"print"`
+	Copy     int64 `json:"copy"`
+	FaxPrint int64 `json:"fax_print"`
+	Reports  int64 `json:"reports"`
+}
+
+// CountersByModeOut desglosa por modo físico de alimentación.
+type CountersByModeOut struct {
+	Simplex int64 `json:"simplex"`
+	Duplex  int64 `json:"duplex"`
+}
+
+// CountersByDestinationOut desglosa escaneos/envíos por destino.
+type CountersByDestinationOut struct {
+	Email     int64 `json:"email"`
+	FTP       int64 `json:"ftp"`
+	SMB       int64 `json:"smb"`
+	USB       int64 `json:"usb"`
+	Others    int64 `json:"others"`
+	TotalSend int64 `json:"total_send"`
+}
+
+// CountersLogicalMatrixOut agrupa los tres ejes lógicos de análisis.
+type CountersLogicalMatrixOut struct {
+	ByFunction    CountersByFunctionOut    `json:"by_function"`
+	ByMode        CountersByModeOut        `json:"by_mode"`
+	ByDestination CountersByDestinationOut `json:"by_destination"`
+}
+
+// CountersHardwareUsageOut contiene métricas de desgaste físico del motor.
+type CountersHardwareUsageOut struct {
+	TotalScans   int64 `json:"total_scans"`
+	EngineCycles int64 `json:"engine_cycles"`
 }
 
 type AgentSource struct {
@@ -67,40 +126,12 @@ type StatusInfo struct {
 	SystemLocation      string `json:"system_location,omitempty"`
 }
 
-type SupplyInfo struct {
-	ID            string  `json:"id"`
-	Name          string  `json:"name"`
-	Type          string  `json:"type"`
-	Level         int64   `json:"level"`
-	MaxLevel      int64   `json:"max_level"`
-	Percentage    float64 `json:"percentage"`
-	Status        string  `json:"status"`
-	Model         string  `json:"model,omitempty"`
-	SerialNumber  string  `json:"serial_number,omitempty"`
-	Brand         string  `json:"brand,omitempty"`
-	OEM           string  `json:"oem,omitempty"`
-	Description   string  `json:"description,omitempty"`
-	ComponentType string  `json:"component_type,omitempty"`
-	PageCapacity  int64   `json:"page_capacity,omitempty"`
-	PartNumber    string  `json:"part_number,omitempty"`
-}
-
 type AlertInfo struct {
 	ID         string    `json:"id"`
 	Type       string    `json:"type"`
 	Severity   string    `json:"severity"`
 	Message    string    `json:"message"`
 	DetectedAt time.Time `json:"detected_at"`
-}
-
-type CapabilitiesInfo struct {
-	SNMPVersion     string   `json:"snmp_version"`
-	Duplex          bool     `json:"duplex"`
-	Color           bool     `json:"color"`
-	Scanner         bool     `json:"scanner"`
-	Fax             bool     `json:"fax"`
-	OidsSupported   []string `json:"oids_supported"`
-	OidsSuccessRate float64  `json:"oids_success_rate"`
 }
 
 type MetricsInfo struct {

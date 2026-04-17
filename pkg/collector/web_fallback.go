@@ -2,12 +2,13 @@ package collector
 
 // web_fallback.go — Adaptador entre DataCollector y pkg/webfallback.
 //
-// Este archivo es intencionalmente delgado: solo sabe cuándo activar el
-// fallback y cómo volcar el resultado en NormalizedCounters. El scraping
-// real vive en pkg/webfallback/<marca>.go.
+// Intencionalmente delgado: solo decide cuándo activar el fallback y
+// cómo volcar la jerarquía Counters en el mapa NormalizedCounters plano
+// que usa el resto del colector.
 
 import (
-	"fmt"
+	"log"
+	"strings"
 
 	"github.com/asaavedra/agent-snmp/pkg/webfallback"
 )
@@ -15,64 +16,104 @@ import (
 // applyWebCountersFallback invoca el fetcher web de la marca correspondiente
 // cuando SNMP retornó copy_pages == 0 y scan_pages == 0.
 //
-// Solo sobreescribe los campos que llegaron como 0 — nunca pisa datos SNMP
-// válidos. Esto permite mezcla coherente SNMP + Web.
+// Solo sobreescribe campos que llegaron como 0 desde SNMP — nunca pisa
+// datos SNMP válidos. Permite mezcla coherente SNMP + Web.
 func (dc *DataCollector) applyWebCountersFallback(data *PrinterData) {
 	if !webfallback.Supported(data.Brand) {
-		fmt.Printf("[%s][WEB_FALLBACK] Marca %q sin soporte web, omitiendo\n", data.IP, data.Brand)
+		log.Printf("[%s][WEB_FALLBACK] Marca %q sin soporte web, omitiendo\n", data.IP, data.Brand)
 		return
 	}
 
 	copyVal := getInt(data.NormalizedCounters, "copy_pages")
 	scanVal := getInt(data.NormalizedCounters, "scan_pages")
 
-	fmt.Printf("[%s][WEB_FALLBACK] copy_pages=%d scan_pages=%d via SNMP → intentando HTTP (%s)\n",
+	log.Printf("[%s][WEB_FALLBACK] copy_pages=%d scan_pages=%d via SNMP → intentando HTTP (%s)\n",
 		data.IP, copyVal, scanVal, data.Brand)
 
 	wc, err := webfallback.Get(data.Brand, data.IP)
 	if err != nil {
-		// Error parcial: puede haber extraído algunos campos igualmente.
-		fmt.Printf("[%s][WEB_FALLBACK] ⚠️  %v\n", data.IP, err)
+		log.Printf("[%s][WEB_FALLBACK] ⚠️  %v\n", data.IP, err)
 	}
 	if wc == nil {
-		fmt.Printf("[%s][WEB_FALLBACK] ❌ Sin respuesta del servidor web\n", data.IP)
+		log.Printf("[%s][WEB_FALLBACK] ❌ Sin respuesta del servidor web\n", data.IP)
 		return
 	}
 
-	fmt.Printf("[%s][WEB_FALLBACK] ✅ total=%d copy=%d print=%d scan=%d (dadf=%d platen=%d) duplex_mono=%d duplex_color=%d\n",
-		data.IP, wc.TotalPages, wc.CopyPages, wc.PrintPages, wc.ScanPages,
-		wc.DADFScans, wc.PlatenScans, wc.DuplexMono, wc.DuplexColor)
+	log.Printf("[%s][WEB_FALLBACK] ✅ total=%d copy=%d print=%d scan=%d duplex=%d simplex=%d\n",
+		data.IP,
+		wc.Absolute.Total,
+		wc.LogicalMatrix.ByFunction.Copy,
+		wc.LogicalMatrix.ByFunction.Print,
+		wc.HardwareUsage.TotalScans,
+		wc.LogicalMatrix.ByMode.Duplex,
+		wc.LogicalMatrix.ByMode.Simplex,
+	)
 
-	// Aplicar solo los campos que SNMP no proporcionó.
-	if copyVal == 0 && wc.CopyPages > 0 {
-		data.NormalizedCounters["copy_pages"] = wc.CopyPages
+	// ── Contadores principales ───────────────────────────────────────────────
+	if getInt(data.NormalizedCounters, "total_pages") == 0 && wc.Absolute.Total > 0 {
+		data.NormalizedCounters["total_pages"] = wc.Absolute.Total
 	}
-	if scanVal == 0 && wc.ScanPages > 0 {
-		data.NormalizedCounters["scan_pages"]   = wc.ScanPages
-		data.NormalizedCounters["dadf_scans"]   = wc.DADFScans
-		data.NormalizedCounters["platen_scans"] = wc.PlatenScans
+	if getInt(data.NormalizedCounters, "mono_pages") == 0 && wc.Absolute.Mono > 0 {
+		data.NormalizedCounters["mono_pages"] = wc.Absolute.Mono
 	}
-	if getInt(data.NormalizedCounters, "print_pages") == 0 && wc.PrintPages > 0 {
-		data.NormalizedCounters["print_pages"] = wc.PrintPages
+	if getInt(data.NormalizedCounters, "color_pages") == 0 && wc.Absolute.Color > 0 {
+		data.NormalizedCounters["color_pages"] = wc.Absolute.Color
 	}
-	if getInt(data.NormalizedCounters, "total_pages") == 0 && wc.TotalPages > 0 {
-		data.NormalizedCounters["total_pages"] = wc.TotalPages
+	if copyVal == 0 && wc.LogicalMatrix.ByFunction.Copy > 0 {
+		data.NormalizedCounters["copy_pages"] = wc.LogicalMatrix.ByFunction.Copy
+	}
+	if getInt(data.NormalizedCounters, "print_pages") == 0 && wc.LogicalMatrix.ByFunction.Print > 0 {
+		data.NormalizedCounters["print_pages"] = wc.LogicalMatrix.ByFunction.Print
+	}
+	if scanVal == 0 && wc.HardwareUsage.TotalScans > 0 {
+		data.NormalizedCounters["scan_pages"] = wc.HardwareUsage.TotalScans
 	}
 
-	// Desglose Duplex/Simplex — opcionales, solo Samsung SyncThru 6.x+.
-	// Se escriben incondicionalmente (sobrescriben 0 o actualizan el dato anterior).
-	if wc.DuplexMono > 0 {
-		data.NormalizedCounters["duplex_mono_pages"] = wc.DuplexMono
+	// ── Desglose por función (fax, informes) — opcional ─────────────────────
+	if wc.LogicalMatrix.ByFunction.FaxPrint > 0 {
+		data.NormalizedCounters["fax_pages"] = wc.LogicalMatrix.ByFunction.FaxPrint
 	}
-	if wc.DuplexColor > 0 {
-		data.NormalizedCounters["duplex_color_pages"] = wc.DuplexColor
+
+	// ── Desglose por modo (solo SyncThru 6.x+) ──────────────────────────────
+	if wc.LogicalMatrix.ByMode.Duplex > 0 {
+		data.NormalizedCounters["duplex_pages"] = wc.LogicalMatrix.ByMode.Duplex
 	}
-	if wc.SimplexMono > 0 {
-		data.NormalizedCounters["simplex_mono_pages"] = wc.SimplexMono
+	if wc.LogicalMatrix.ByMode.Simplex > 0 {
+		data.NormalizedCounters["simplex_pages"] = wc.LogicalMatrix.ByMode.Simplex
 	}
-	if wc.SimplexColor > 0 {
-		data.NormalizedCounters["simplex_color_pages"] = wc.SimplexColor
+
+	// ── Desglose por destino de escaneo ─────────────────────────────────────
+	dst := wc.LogicalMatrix.ByDestination
+	if dst.Email > 0 {
+		data.NormalizedCounters["scan_email"] = dst.Email
+	}
+	if dst.FTP > 0 {
+		data.NormalizedCounters["scan_ftp"] = dst.FTP
+	}
+	if dst.SMB > 0 {
+		data.NormalizedCounters["scan_smb"] = dst.SMB
+	}
+	if dst.USB > 0 {
+		data.NormalizedCounters["scan_usb"] = dst.USB
+	}
+	if dst.Others > 0 {
+		data.NormalizedCounters["scan_others"] = dst.Others
 	}
 
 	data.CounterConfidence = "profiled+web"
+}
+
+// webFallbackNeeded informa si el dispositivo es una marca con soporte web
+// y sus contadores de copia/escaneo llegaron a cero desde SNMP.
+// Se llama desde collectCountersFromYAML.
+// webFallbackNeeded activa el scraping HTTP cuando la marca tiene soporte web
+// y al menos uno de los contadores estratégicos (copy o scan) llegó a cero
+// desde SNMP — indicando que el perfil no los expone vía MIB privada.
+// Se usa OR para capturar el caso frecuente donde una impresora tiene copias
+// válidas pero scan_pages=0 (o viceversa).
+func webFallbackNeeded(data *PrinterData) bool {
+	brand := strings.ToLower(data.Brand)
+	supported := brand == "samsung" || brand == "xerox"
+	return supported && (getInt(data.NormalizedCounters, "copy_pages") == 0 ||
+		getInt(data.NormalizedCounters, "scan_pages") == 0)
 }

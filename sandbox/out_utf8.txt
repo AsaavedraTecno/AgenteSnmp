@@ -1,0 +1,87 @@
+<a href="http://www.xerox.com" title="xerox.com"><i class="xrx-logo glyph"></i></a>
+Xerox<sup>&reg; </sup>AltaLink<sup>&reg; </sup>C8055
+
+				<button id="globalHeaderLoginBtn" type="button" class="loginButton" onclick="Javascript:OpenLogin('stat')">Login</button>
+			
+Total Impressions
+202025
+&nbsp;&nbsp;&nbsp;Black Impressions
+54925
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black Copied Impressions
+3357
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black Printed Impressions
+51568
+&nbsp;&nbsp;&nbsp;Color Impressions
+147100
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color Copied Impressions
+4212
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color Printed Impressions
+142888
+&nbsp;&nbsp;&nbsp;Single Impressions
+202025
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black Single Impressions
+54925
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color Single Impressions
+147100
+&nbsp;&nbsp;&nbsp;A4 Equivalent Impressions
+204882
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black A4 Equivalent Impressions
+55024
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color A4 Equivalent Impressions
+149858
+&nbsp;&nbsp;&nbsp;Internet Fax Impressions
+0
+&nbsp;&nbsp;&nbsp;Large Impressions
+2857
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black Large Impressions
+99
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color Large Impressions
+2758
+&nbsp;&nbsp;&nbsp;Stored Image Printed Impressions
+0
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Black Stored Image Printed Impressions
+0
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Color Stored Image Printed Impressions
+0
+&nbsp;
+&nbsp;
+Black Copied Sheets
+2680
+Color Copied Sheets
+3758
+Black Printed Sheets
+33796
+Color Printed Sheets
+109381
+&nbsp;
+&nbsp;
+Black Copied 2 Sided Sheets
+544
+Color Copied 2 Sided Sheets
+587
+Black Printed 2 Sided Sheets
+14537
+Color Printed 2 Sided Sheets
+36742
+&nbsp;
+&nbsp;
+Black Copied Large Sheets
+47
+Color Copied Large Sheets
+194
+Black Printed Large Sheets
+42
+Color Printed Large Sheets
+2063
+&nbsp;
+&nbsp;
+Internet Fax Images Sent
+0
+Email Images Sent
+8905
+Server Fax Images Sent
+0
+Network Scanning Images Sent
+4980
+Power On Impressions
+394

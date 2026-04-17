@@ -123,7 +123,7 @@ func main() {
 		Version:  "dev",
 	}
 
-	scanRunner := runner.NewRunner(agentSource, queuePath)
+	scanRunner := runner.NewRunner(agentSource, queuePath, filepath.Join(projectRoot, "state"))
 
 	// Inyectar motor de perfiles YAML (cargado una sola vez aquí)
 	profilesDir := filepath.Join(projectRoot, "profiles")

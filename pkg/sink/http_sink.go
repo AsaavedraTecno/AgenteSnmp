@@ -28,7 +28,6 @@ type HTTPSinkConfig struct {
 	InitialWait time.Duration // espera inicial en reintentos (default: 1s)
 }
 
-// TODO: Activar HTTPSink cuando endpoint cloud esté disponible
 // NewHTTPSink crea un nuevo HTTP sink
 func NewHTTPSink(config HTTPSinkConfig) *HTTPSink {
 	if config.MaxRetries == 0 {
@@ -56,7 +55,6 @@ func NewHTTPSink(config HTTPSinkConfig) *HTTPSink {
 	}
 }
 
-// TODO: Activar HTTPSink cuando endpoint cloud esté disponible
 // Write envía el JSON al endpoint con reintentos exponenciales
 func (hs *HTTPSink) Write(ctx context.Context, data []byte, printerID string) error {
 	if len(data) == 0 {
@@ -111,7 +109,6 @@ func (hs *HTTPSink) Write(ctx context.Context, data []byte, printerID string) er
 	return lastErr
 }
 
-// TODO: Activar HTTPSink cuando endpoint cloud esté disponible
 // sendRequest intenta enviar una solicitud HTTP POST
 func (hs *HTTPSink) sendRequest(ctx context.Context, data []byte, printerID string) error {
 	body := bytes.NewReader(data)
@@ -161,7 +158,6 @@ func (hs *HTTPSink) sendRequest(ctx context.Context, data []byte, printerID stri
 	return fmt.Errorf("server error (HTTP %d): %s", resp.StatusCode, bodyStr)
 }
 
-// TODO: Activar HTTPSink cuando endpoint cloud esté disponible
 // Close cierra el HTTPSink (no hay recursos especiales)
 func (hs *HTTPSink) Close() error {
 	// El http.Client no necesita ser cerrado explícitamente

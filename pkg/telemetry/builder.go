@@ -113,52 +113,59 @@ func (b *Builder) buildPrinterID(data *collector.PrinterData) string {
 	return data.IP
 }
 
-func (b *Builder) buildCounters(data *collector.PrinterData, delta *collector.CountersDiff, resetDetected bool, confidence string) *collector.CountersSnapshot {
+func (b *Builder) buildCounters(data *collector.PrinterData, delta *collector.CountersDiff, resetDetected bool, confidence string) *CountersOutput {
 	countersToUse := data.NormalizedCounters
 	if len(countersToUse) == 0 {
 		countersToUse = data.Counters
 	}
 
-	// Siempre devolver un snapshot, incluso si no hay datos.
-	// El backend Laravel debe recibir el objeto counters siempre;
-	// confidence="unavailable" indica que no se pudo recolectar información.
+	if confidence == "" {
+		confidence = "unavailable"
+	}
+
+	// Siempre retornar un objeto counters aunque esté vacío —
+	// el backend Laravel lo espera siempre presente.
 	if len(countersToUse) == 0 {
-		if confidence == "" {
-			confidence = "unavailable"
-		}
-		return &collector.CountersSnapshot{
-			Absolute:   collector.CountersInfo{},
-			Delta:      nil,
-			Confidence: confidence,
-		}
+		return &CountersOutput{Confidence: confidence}
 	}
 
-	absolute := collector.CountersInfo{
-		TotalPages:   int64(b.extractCounter(countersToUse, "total_pages")),
-		MonoPages:    int64(b.extractCounter(countersToUse, "mono_pages")),
-		ColorPages:   int64(b.extractCounter(countersToUse, "color_pages")),
-		ScanPages:    int64(b.extractCounter(countersToUse, "scan_pages")),
-		CopyPages:    int64(b.extractCounter(countersToUse, "copy_pages")),
-		FaxPages:     int64(b.extractCounter(countersToUse, "fax_pages")),
-		DuplexPages:  int64(b.extractCounter(countersToUse, "duplex_pages")),
-		SimplexPages: int64(b.extractCounter(countersToUse, "simplex_pages")),
-		DuplexMono:   int64(b.extractCounter(countersToUse, "duplex_mono")),
-		DuplexColor:  int64(b.extractCounter(countersToUse, "duplex_color")),
-		EngineCycles: int64(b.extractCounter(countersToUse, "engine_cycles", "ciclo_motor")),
-		EngineMono:   int64(b.extractCounter(countersToUse, "engine_mono")),
-		EngineColor:  int64(b.extractCounter(countersToUse, "engine_color")),
-		Tray1Pages:   int64(b.extractCounter(countersToUse, "tray1_pages")),
-		MpPages:      int64(b.extractCounter(countersToUse, "mp_pages")),
+	// Atajo para extraer un campo del mapa plano NormalizedCounters.
+	ex := func(keys ...string) int64 {
+		return int64(b.extractCounter(countersToUse, keys...))
 	}
 
-	snapshot := &collector.CountersSnapshot{
-		Absolute:      absolute,
-		Delta:         delta,
-		ResetDetected: resetDetected,
-		Confidence:    confidence,
+	return &CountersOutput{
+		Absolute: CountersAbsoluteOut{
+			Total: ex("total_pages"),
+			Mono:  ex("mono_pages"),
+			Color: ex("color_pages"),
+		},
+		LogicalMatrix: CountersLogicalMatrixOut{
+			ByFunction: CountersByFunctionOut{
+				Print:    ex("print_pages"),
+				Copy:     ex("copy_pages"),
+				FaxPrint: ex("fax_pages"),
+				Reports:  0, // sin OID estándar SNMP para informes
+			},
+			ByMode: CountersByModeOut{
+				Simplex: ex("simplex_pages"),
+				Duplex:  ex("duplex_pages"),
+			},
+			ByDestination: CountersByDestinationOut{
+				Email:     ex("scan_email"),
+				FTP:       ex("scan_ftp"),
+				SMB:       ex("scan_smb"),
+				USB:       ex("scan_usb"),
+				Others:    ex("scan_others"),
+				TotalSend: ex("scan_pages"),
+			},
+		},
+		HardwareUsage: CountersHardwareUsageOut{
+			TotalScans:   ex("scan_pages"),
+			EngineCycles: ex("engine_cycles", "ciclo_motor"),
+		},
+		Confidence: confidence,
 	}
-
-	return snapshot
 }
 
 func (b *Builder) buildEventID(printer PrinterInfo, timestamp time.Time) string {

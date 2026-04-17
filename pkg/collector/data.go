@@ -3,6 +3,7 @@ package collector
 import (
 	"context"
 	"fmt"
+	"log"
 	"math"
 	"strconv"
 	"strings"
@@ -70,8 +71,8 @@ type CountersInfo struct {
 	EngineMono   int64 `json:"engine_mono,omitempty"`
 	EngineColor  int64 `json:"engine_color,omitempty"`
 	// Páginas por bandeja de origen (Samsung: OIDs .33.0 y .31.0)
-	Tray1Pages   int64 `json:"tray1_pages,omitempty"`
-	MpPages      int64 `json:"mp_pages,omitempty"`
+	Tray1Pages int64 `json:"tray1_pages,omitempty"`
+	MpPages    int64 `json:"mp_pages,omitempty"`
 }
 
 type CountersDiff struct {
@@ -155,26 +156,31 @@ func (dc *DataCollector) CollectData(ctx context.Context, devices []DeviceInfo) 
 	resultsChan := make(chan PrinterData, len(devices))
 	var wg sync.WaitGroup
 
-	fmt.Printf("Iniciando recolección de %d dispositivos...\n", len(devices))
+	// Limitar goroutines concurrentes para evitar OOM en redes grandes.
+	// Usamos MaxConcurrentConnections como techo; mínimo 1.
+	maxWorkers := dc.config.MaxConcurrentConnections
+	if maxWorkers <= 0 {
+		maxWorkers = 10
+	}
+	sem := make(chan struct{}, maxWorkers)
+
+	log.Printf("Iniciando recolección de %d dispositivos (workers=%d)...", len(devices), maxWorkers)
 	startTime := time.Now()
 
 	for _, device := range devices {
 		wg.Add(1)
+		sem <- struct{}{} // adquirir slot — bloquea si el pool está lleno
 		go func(devInfo DeviceInfo) {
 			defer wg.Done()
-			// Recuperar panics para que un dispositivo problemático no derribe el ciclo completo.
+			defer func() { <-sem }() // liberar slot al terminar
 			defer func() {
 				if r := recover(); r != nil {
-					fmt.Printf("[%s] ⚠️ panic recuperado en goroutine de recolección: %v\n", devInfo.IP, r)
+					log.Printf("[%s] panic recuperado en goroutine de recolección: %v", devInfo.IP, r)
 					empty := dc.initializePrinterData(devInfo)
 					empty.Errors = append(empty.Errors, fmt.Sprintf("panic: %v", r))
 					resultsChan <- empty
 				}
 			}()
-			if dc.rateLimiter != nil {
-				dc.rateLimiter.Wait()
-				defer dc.rateLimiter.Release()
-			}
 			data := dc.collectFromDevice(ctx, devInfo)
 			resultsChan <- data
 		}(device)
@@ -189,8 +195,7 @@ func (dc *DataCollector) CollectData(ctx context.Context, devices []DeviceInfo) 
 		results = append(results, data)
 	}
 
-	elapsed := time.Since(startTime)
-	fmt.Printf("Recolección completada en %.2f segundos.\n", elapsed.Seconds())
+	log.Printf("Recolección completada en %.2fs.", time.Since(startTime).Seconds())
 	return results, nil
 }
 
@@ -239,7 +244,7 @@ func (dc *DataCollector) collectFromDevice(ctx context.Context, devInfo DeviceIn
 		if devProfile != nil {
 			profileID = devProfile.ProfileID
 		}
-		fmt.Printf("[%s][PROFILE_SEL] sysObjectID=%q → perfil=%s\n", devInfo.IP, sysOID, profileID)
+		log.Printf("[%s][PROFILE_SEL] sysObjectID=%q → perfil=%s\n", devInfo.IP, sysOID, profileID)
 	}
 
 	// FASE 1b: Identificación específica del fabricante (OIDs propietarios del perfil YAML)
@@ -540,17 +545,17 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 		return
 	}
 
-	fmt.Printf("[%s][COUNTER_YAML] Consultando %d OIDs: %v\n", data.IP, len(oids), oids)
+	log.Printf("[%s][COUNTER_YAML] Consultando %d OIDs: %v\n", data.IP, len(oids), oids)
 
 	ctx := snmp.NewContext()
 	results, err := client.GetMultiple(oids, ctx)
 	if err != nil {
-		fmt.Printf("[%s][COUNTER_YAML] ❌ GetMultiple falló: %v → fallback RFC 3805\n", data.IP, err)
+		log.Printf("[%s][COUNTER_YAML] ❌ GetMultiple falló: %v → fallback RFC 3805\n", data.IP, err)
 		dc.collectCountersStandard(data, client)
 		return
 	}
 
-	fmt.Printf("[%s][COUNTER_YAML] Respuestas recibidas: %d/%d OIDs\n", data.IP, len(results), len(oids))
+	log.Printf("[%s][COUNTER_YAML] Respuestas recibidas: %d/%d OIDs\n", data.IP, len(results), len(oids))
 
 	// Acumular para oid_success_rate real
 	data.OIDsQueried += len(oids)
@@ -563,16 +568,16 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 		if names, ok := oidToNames[clean]; ok {
 			intVal := parseCounter(rawStr)
 			if intVal >= 0 && !isSuspiciousValue(intVal) {
-				fmt.Printf("[%s][COUNTER_YAML] ✅ %-40s → %s=%d (nombres: %v)\n", data.IP, clean, rawStr, intVal, names)
+				log.Printf("[%s][COUNTER_YAML] ✅ %-40s → %s=%d (nombres: %v)\n", data.IP, clean, rawStr, intVal, names)
 				for _, name := range names {
 					data.NormalizedCounters[name] = intVal
 				}
 			} else {
-				fmt.Printf("[%s][COUNTER_YAML] ⚠️  %-40s → raw=%q intVal=%d EXCLUIDO (isSuspicious=%v)\n",
+				log.Printf("[%s][COUNTER_YAML] ⚠️  %-40s → raw=%q intVal=%d EXCLUIDO (isSuspicious=%v)\n",
 					data.IP, clean, rawStr, intVal, isSuspiciousValue(intVal))
 			}
 		} else {
-			fmt.Printf("[%s][COUNTER_YAML] 🔵 OID no mapeado: %s = %v\n", data.IP, clean, val)
+			log.Printf("[%s][COUNTER_YAML] 🔵 OID no mapeado: %s = %v\n", data.IP, clean, val)
 		}
 	}
 
@@ -580,7 +585,7 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 	for _, oid := range oids {
 		if _, responded := results[oid]; !responded {
 			if _, responded2 := results["."+oid]; !responded2 {
-				fmt.Printf("[%s][COUNTER_YAML] ❌ Sin respuesta para: %s (nombres: %v)\n", data.IP, oid, oidToNames[oid])
+				log.Printf("[%s][COUNTER_YAML] ❌ Sin respuesta para: %s (nombres: %v)\n", data.IP, oid, oidToNames[oid])
 			}
 		}
 	}
@@ -589,16 +594,13 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 	// privados devolvieron vacío — ej. Samsung ProXpress con MIB distinta), recurrir
 	// al contador universal RFC 3805 prtMarkerLifeCount.
 	if getInt(data.NormalizedCounters, "total_pages") == 0 {
-		fmt.Printf("[%s][COUNTER_YAML] ⚠️  total_pages=0 tras perfil → intentando fallback RFC 3805\n", data.IP)
+		log.Printf("[%s][COUNTER_YAML] ⚠️  total_pages=0 tras perfil → intentando fallback RFC 3805\n", data.IP)
 		dc.collectCountersStandard(data, client)
 	}
 
-	// Fallback Web (Samsung Legacy SCX-6545X y serie SCX-6xxx):
-	// La MIB Samsung 1.3.6.1.4.1.236 no expone copy_pages ni scan_pages en estos modelos.
-	// Si ambos siguen en 0 tras el perfil YAML, se consulta el servidor web embebido.
-	if strings.EqualFold(data.Brand, "samsung") &&
-		getInt(data.NormalizedCounters, "copy_pages") == 0 &&
-		getInt(data.NormalizedCounters, "scan_pages") == 0 {
+	// Fallback Web: la condición está encapsulada en webFallbackNeeded para
+	// que agregar soporte a otras marcas no requiera tocar este bloque.
+	if webFallbackNeeded(data) {
 		dc.applyWebCountersFallback(data)
 	}
 }
@@ -623,7 +625,7 @@ func (dc *DataCollector) collectCountersStandard(data *PrinterData, client *snmp
 }
 
 func (dc *DataCollector) inferCounterSource(data *PrinterData) string {
-	if data.CounterConfidence == "profiled" {
+	if strings.HasPrefix(data.CounterConfidence, "profiled") {
 		return "profiled"
 	}
 	return "standard"
@@ -691,7 +693,7 @@ func (dc *DataCollector) consolidateCounters(data *PrinterData) {
 			}
 		}
 
-		fmt.Printf("[%s][PROFILED] Consolidado -> T:%d M:%d C:%d (isColor:%v)\n",
+		log.Printf("[%s][PROFILED] Consolidado -> T:%d M:%d C:%d (isColor:%v)\n",
 			data.IP, total, mono, color, isColorDevice)
 
 	} else {
@@ -707,21 +709,14 @@ func (dc *DataCollector) consolidateCounters(data *PrinterData) {
 			mono = total
 		}
 
-		fmt.Printf("[%s][STANDARD] Consolidado -> T:%d M:%d C:%d (isColor:%v)\n",
+		log.Printf("[%s][STANDARD] Consolidado -> T:%d M:%d C:%d (isColor:%v)\n",
 			data.IP, total, mono, color, isColorDevice)
 	}
-
-	/* 4. ASIGNACIÓN FINAL LIMPIA
-	finalMap := make(map[string]interface{})
-	finalMap["total_pages"] = total
-	finalMap["mono_pages"] = mono
-	finalMap["color_pages"] = color */
 
 	data.NormalizedCounters["total_pages"] = total
 	data.NormalizedCounters["mono_pages"] = mono
 	data.NormalizedCounters["color_pages"] = color
-	fmt.Printf("[%s] Consolidación finalizada. Contadores en mapa: %v\n", data.IP, data.NormalizedCounters)
-	// data.NormalizedCounters = finalMap
+	log.Printf("[%s] Consolidación finalizada. Contadores: %v", data.IP, data.NormalizedCounters)
 }
 
 // --- MÓDULO DE BANDEJAS ---
@@ -958,7 +953,9 @@ func parseCounter(val string) int64 {
 	return -1
 }
 
-func isSuspiciousValue(val int64) bool { return val > 2000000000 }
+// isSuspiciousValue descarta valores que superan 10 mil millones de páginas
+// (límite físicamente imposible para cualquier impresora conocida).
+func isSuspiciousValue(val int64) bool { return val > 10_000_000_000 }
 
 func getLastIndex(oid string) string {
 	parts := strings.Split(oid, ".")

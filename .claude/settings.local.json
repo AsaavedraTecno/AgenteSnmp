@@ -32,7 +32,11 @@
       "WebFetch(domain:forum.mikrotik.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(go build:*)",
-      "Bash(go test:*)"
+      "Bash(go test:*)",
+      "Bash(grep -n \"absolute\\\\|logical_matrix\\\\|CountersSnapshot\\\\|NormalizedCounters\\\\|counters\" \"C:/Users/asaavedra/Desktop/agentsnmpppp/pkg/serializer/\"*.go)",
+      "Bash(grep -n \"counters\\\\|Counters\\\\|absolute\\\\|logical\\\\|NormalizedCounters\\\\|CountersSnapshot\" \"C:/Users/asaavedra/Desktop/agentsnmpppp/pkg/telemetry/\"*.go)",
+      "Bash(cat)",
+      "Bash(go run:*)"
     ]
   }
 }

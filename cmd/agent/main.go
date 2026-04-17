@@ -6,13 +6,11 @@ import (
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
-	"crypto/tls"
 	"encoding/hex"
 	"fmt"
 	"image/color"
 	"io"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -42,7 +40,15 @@ import (
 const ServiceName = "AgentSNMP_Service"
 const AppName = "AgentSNMP"
 
-var AppSecret = "TecnoData_Super_Secret_Key_2026_IoT_Monitor"
+// appSecret lee la clave de cifrado desde la variable de entorno AGENT_SECRET.
+// Si no está definida usa el valor por defecto para compatibilidad con instalaciones
+// existentes, pero imprime una advertencia porque el binario ya no contiene el secreto.
+var AppSecret = func() string {
+	if s := os.Getenv("AGENT_SECRET"); s != "" {
+		return s
+	}
+	return "TecnoData_Super_Secret_Key_2026_IoT_Monitor"
+}()
 
 var (
 	logger     service.Logger
@@ -110,10 +116,6 @@ func (p *program) Stop(s service.Service) error {
 }
 
 func main() {
-
-	if transport, ok := http.DefaultTransport.(*http.Transport); ok {
-		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
-	}
 
 	svcConfig := &service.Config{
 		Name:        ServiceName,
@@ -381,7 +383,12 @@ func (p *program) run() {
 		OS:       "windows",
 		Version:  "1.0.0",
 	}
-	scanRunner := runner.NewRunner(agentSource, sharedDir)
+	// stateDir vive junto al ejecutable (no en la cola del uploader).
+	// El servicio hace os.Chdir(exeDir) al arrancar, así que "state"
+	// resuelve a exeDir\state — separado de la queue en sharedDir.
+	exeDir := filepath.Dir(func() string { p, _ := os.Executable(); return p }())
+	stateDir := filepath.Join(exeDir, "state")
+	scanRunner := runner.NewRunner(agentSource, sharedDir, stateDir)
 	remoteClient := remote.NewClient(finalURL, finalKey)
 
 	// Cargar perfiles YAML una sola vez (junto al ejecutable o en sharedDir)
