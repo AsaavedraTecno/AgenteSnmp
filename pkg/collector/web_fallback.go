@@ -100,6 +100,17 @@ func (dc *DataCollector) applyWebCountersFallback(data *PrinterData) {
 		data.NormalizedCounters["scan_others"] = dst.Others
 	}
 
+	// Derivar engine_cycles cuando SNMP no lo expone pero web trajo simplex+duplex.
+	// engine_cycles = hojas físicas = simplex + duplex/2
+	// (duplex_pages son impresiones/lados, no hojas: 1 hoja dúplex = 2 impresiones)
+	if getInt(data.NormalizedCounters, "engine_cycles") == 0 {
+		simplex := getInt(data.NormalizedCounters, "simplex_pages")
+		duplex  := getInt(data.NormalizedCounters, "duplex_pages")
+		if simplex > 0 || duplex > 0 {
+			data.NormalizedCounters["engine_cycles"] = simplex + duplex/2
+		}
+	}
+
 	data.CounterConfidence = "profiled+web"
 }
 
