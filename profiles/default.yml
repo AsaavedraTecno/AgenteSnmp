@@ -30,7 +30,9 @@ oids:
   # RFC 3805 prtMarkerTable (1.3.6.1.2.1.43.10.2.1)
   counters:
     total_pages:   "1.3.6.1.2.1.43.10.2.1.4.1.1"  # prtMarkerLifeCount: contador vitalicio de impresiones
-    engine_cycles: "1.3.6.1.2.1.43.10.2.1.4.1.1"  # alias semántico — mismo OID, distinto significado lógico
+    # engine_cycles NO se define aquí: RFC 3805 no tiene un OID separado para ciclos de motor.
+    # Para marcas con soporte web (Samsung, Xerox), se deriva en web_fallback.go
+    # como simplex + duplex/2. Para el resto queda en 0.
 
   # ── Estado del dispositivo ───────────────────────────────────────────────
   # Host Resources MIB + RFC 3805 Alert Table

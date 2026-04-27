@@ -518,6 +518,15 @@ func (dc *DataCollector) collectHardwareAlerts(data *PrinterData, client *snmp.S
 // Un mismo OID puede tener varios nombres semánticos (ej: total_pages y engine_cycles
 // apuntan al mismo OID en Xerox); el colector los resuelve iterando el mapa completo.
 func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp.SNMPClient, prof *profile.DeviceProfile) {
+	// El web fallback debe ejecutarse independientemente del path que tome la función
+	// (perfil YAML, sin perfil, sin OIDs). defer garantiza que ningún return prematuro
+	// lo salte, resolviendo el gap donde dispositivos sin perfil perdían copy/scan/engine_cycles.
+	defer func() {
+		if webFallbackNeeded(data) {
+			dc.applyWebCountersFallback(data)
+		}
+	}()
+
 	if prof == nil || len(prof.OIDs.Counters) == 0 {
 		dc.collectCountersStandard(data, client)
 		return
@@ -598,11 +607,6 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 		dc.collectCountersStandard(data, client)
 	}
 
-	// Fallback Web: la condición está encapsulada en webFallbackNeeded para
-	// que agregar soporte a otras marcas no requiera tocar este bloque.
-	if webFallbackNeeded(data) {
-		dc.applyWebCountersFallback(data)
-	}
 }
 
 // collectCountersStandard es el fallback RFC 3805 para dispositivos sin perfil YAML
