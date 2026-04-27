@@ -532,21 +532,24 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 		return
 	}
 
-	// Construir slice de OIDs único y mapa inverso OID → []nombre
+	// Construir listas de OIDs por prioridad por contador (OIDList: first-valid-wins)
+	// y el conjunto único de OIDs para GetMultiple.
+	counterOIDs := make(map[string][]string) // counter name → ordered OID list
 	oidSeen := make(map[string]bool)
 	var oids []string
-	oidToNames := make(map[string][]string)
 
-	for name, oid := range prof.OIDs.Counters {
-		clean := strings.TrimPrefix(oid, ".")
-		if clean == "" {
-			continue
+	for name, oidList := range prof.OIDs.Counters {
+		for _, oid := range oidList {
+			clean := strings.TrimPrefix(oid, ".")
+			if clean == "" {
+				continue
+			}
+			counterOIDs[name] = append(counterOIDs[name], clean)
+			if !oidSeen[clean] {
+				oids = append(oids, clean)
+				oidSeen[clean] = true
+			}
 		}
-		if !oidSeen[clean] {
-			oids = append(oids, clean)
-			oidSeen[clean] = true
-		}
-		oidToNames[clean] = append(oidToNames[clean], name)
 	}
 
 	if len(oids) == 0 {
@@ -571,32 +574,61 @@ func (dc *DataCollector) collectCountersFromYAML(data *PrinterData, client *snmp
 	data.OIDsResponded += len(results)
 
 	data.CounterConfidence = "profiled"
-	for oid, val := range results {
-		clean := strings.TrimPrefix(oid, ".")
-		rawStr := fmt.Sprintf("%v", val)
-		if names, ok := oidToNames[clean]; ok {
+
+	// First-valid-wins: para cada contador, prueba OIDs en orden de prioridad.
+	for name, oidPriority := range counterOIDs {
+		for _, oid := range oidPriority {
+			val, ok := results[oid]
+			if !ok {
+				val, ok = results["."+oid]
+			}
+			if !ok || val == nil {
+				continue
+			}
+			rawStr := fmt.Sprintf("%v", val)
 			intVal := parseCounter(rawStr)
 			if intVal >= 0 && !isSuspiciousValue(intVal) {
-				log.Printf("[%s][COUNTER_YAML] ✅ %-40s → %s=%d (nombres: %v)\n", data.IP, clean, rawStr, intVal, names)
-				for _, name := range names {
-					data.NormalizedCounters[name] = intVal
-				}
-			} else {
-				log.Printf("[%s][COUNTER_YAML] ⚠️  %-40s → raw=%q intVal=%d EXCLUIDO (isSuspicious=%v)\n",
-					data.IP, clean, rawStr, intVal, isSuspiciousValue(intVal))
+				log.Printf("[%s][COUNTER_YAML] ✅ %-40s → %d (counter=%s)\n", data.IP, oid, intVal, name)
+				data.NormalizedCounters[name] = intVal
+				break
 			}
-		} else {
-			log.Printf("[%s][COUNTER_YAML] 🔵 OID no mapeado: %s = %v\n", data.IP, clean, val)
+			log.Printf("[%s][COUNTER_YAML] ⚠️  %-40s → raw=%q excluido, probando siguiente OID\n", data.IP, oid, rawStr)
 		}
 	}
 
 	// Reportar OIDs del perfil que no tuvieron respuesta
 	for _, oid := range oids {
-		if _, responded := results[oid]; !responded {
-			if _, responded2 := results["."+oid]; !responded2 {
-				log.Printf("[%s][COUNTER_YAML] ❌ Sin respuesta para: %s (nombres: %v)\n", data.IP, oid, oidToNames[oid])
+		if _, ok := results[oid]; !ok {
+			if _, ok2 := results["."+oid]; !ok2 {
+				log.Printf("[%s][COUNTER_YAML] ❌ Sin respuesta para: %s\n", data.IP, oid)
 			}
 		}
+	}
+
+	// Derivar contadores compuestos desde sub-contadores granulares SNMP.
+	// Se ejecuta antes del fallback RFC 3805 para que los valores derivados
+	// cuenten como datos de perfil (no requieren web scraping).
+	printSimp := getInt(data.NormalizedCounters, "print_simplex")
+	copySimp  := getInt(data.NormalizedCounters, "copy_simplex")
+	printDup  := getInt(data.NormalizedCounters, "print_duplex")
+	copyDup   := getInt(data.NormalizedCounters, "copy_duplex")
+	scanMono  := getInt(data.NormalizedCounters, "scan_mono")
+	scanColor := getInt(data.NormalizedCounters, "scan_color")
+
+	if (printSimp > 0 || printDup > 0) && getInt(data.NormalizedCounters, "print_pages") == 0 {
+		data.NormalizedCounters["print_pages"] = printSimp + printDup
+	}
+	if (copySimp > 0 || copyDup > 0) && getInt(data.NormalizedCounters, "copy_pages") == 0 {
+		data.NormalizedCounters["copy_pages"] = copySimp + copyDup
+	}
+	if (printSimp+copySimp > 0) && getInt(data.NormalizedCounters, "simplex_pages") == 0 {
+		data.NormalizedCounters["simplex_pages"] = printSimp + copySimp
+	}
+	if (printDup+copyDup > 0) && getInt(data.NormalizedCounters, "duplex_pages") == 0 {
+		data.NormalizedCounters["duplex_pages"] = printDup + copyDup
+	}
+	if (scanMono > 0 || scanColor > 0) && getInt(data.NormalizedCounters, "scan_pages") == 0 {
+		data.NormalizedCounters["scan_pages"] = scanMono + scanColor
 	}
 
 	// Fallback RFC 3805: si el perfil no produjo ningún total_pages (todos los OIDs
@@ -720,6 +752,17 @@ func (dc *DataCollector) consolidateCounters(data *PrinterData) {
 	data.NormalizedCounters["total_pages"] = total
 	data.NormalizedCounters["mono_pages"] = mono
 	data.NormalizedCounters["color_pages"] = color
+
+	// engine_cycles = hojas físicas = simplex + duplex/2
+	// (duplex_pages cuenta lados impresos, no hojas: 1 hoja dúplex = 2 lados)
+	if getInt(data.NormalizedCounters, "engine_cycles") == 0 {
+		simp := getInt(data.NormalizedCounters, "simplex_pages")
+		dup  := getInt(data.NormalizedCounters, "duplex_pages")
+		if simp > 0 || dup > 0 {
+			data.NormalizedCounters["engine_cycles"] = simp + dup/2
+		}
+	}
+
 	log.Printf("[%s] Consolidación finalizada. Contadores: %v", data.IP, data.NormalizedCounters)
 }
 

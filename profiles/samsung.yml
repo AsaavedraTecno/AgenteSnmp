@@ -31,18 +31,40 @@ oids:
     location:      "1.3.6.1.2.1.1.6.0"                # sysLocation
 
   # ── Contadores de páginas ────────────────────────────────────────────────
-  # Samsung MIB privada (OID 236.11.5.1.1.3) expone contadores granulares.
-  # No hay un OID nativo de color_pages; se sintetiza desde total - mono.
+  # Samsung MIB privada expone dos niveles de detalle:
+  #   • 236.11.5.1.1.3  — totales básicos (compatibilidad amplia)
+  #   • 236.11.5.11.53.11.2.1.7.1  — matriz granular por función/modo (firmware ≥ SL-series)
+  #
+  # El colector usa first-valid-wins para cada campo (OIDList).
+  # Los contadores granulares (print_simplex, copy_simplex, etc.) permiten derivar
+  # print_pages, copy_pages, simplex_pages, duplex_pages y scan_pages directamente
+  # desde SNMP sin necesidad de web scraping.
   counters:
-    # .27.0 es el total real Samsung (confirmado: 14688 = billing page)
-    # RFC .4.1.1 también devuelve el mismo valor; se mantiene como fallback en el builder.
-    total_pages:   "1.3.6.1.4.1.236.11.5.1.1.3.27.0"    # Samsung total impressions (confirmado: 14688 = billing page)
-    # .29.0 = 0 en M332x/M402x — la impresora monocromática no lo usa.
-    # consolidateCounters sintetiza mono = total cuando mono == 0.
-    mono_pages:    "1.3.6.1.4.1.236.11.5.1.1.3.29.0"    # Samsung mono (0 en M332x/M402x, válido en otras series)
-    # .2.0 = 937985 — valor sin relación con páginas impresas; OID eliminado hasta identificar su significado.
-    tray1_pages:   "1.3.6.1.4.1.236.11.5.1.1.3.33.0"    # Páginas alimentadas desde Bandeja 1 (confirmado: 12283)
-    mp_pages:      "1.3.6.1.4.1.236.11.5.1.1.3.31.0"    # Páginas alimentadas desde MP Tray (confirmado: 2405)
+    # total_pages: primero el OID de la MIB ampliada (suma de función×modo = billing);
+    # fallback al OID clásico 236.11.5.1.1.3.27.0 si el primero no responde.
+    total_pages:
+      - "1.3.6.1.4.1.236.11.5.11.53.11.1.2.0"          # Billing total MIB ampliada (confirmado)
+      - "1.3.6.1.4.1.236.11.5.1.1.3.27.0"              # Total clásico Samsung (confirmado: 14688)
+
+    mono_pages:    "1.3.6.1.4.1.236.11.5.1.1.3.29.0"   # Mono total (0 en monocromáticas M332x/M402x)
+
+    # Contadores granulares por función y modo (MIB ampliada 236.11.5.11.53.11.2.1.7.1.*)
+    # collectCountersFromYAML los deriva automáticamente en:
+    #   print_pages  = print_simplex + print_duplex
+    #   copy_pages   = copy_simplex  + copy_duplex
+    #   simplex_pages = print_simplex + copy_simplex
+    #   duplex_pages  = print_duplex  + copy_duplex
+    #   scan_pages   = scan_mono + scan_color
+    print_simplex: "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.17"  # Impresiones simplex
+    copy_simplex:  "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.18"  # Copias simplex
+    print_duplex:  "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.21"  # Impresiones dúplex
+    copy_duplex:   "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.22"  # Copias dúplex
+    scan_color:    "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.34"  # Escaneos color
+    scan_mono:     "1.3.6.1.4.1.236.11.5.11.53.11.2.1.7.1.35"  # Escaneos mono
+
+    # Páginas por bandeja de origen
+    tray1_pages:   "1.3.6.1.4.1.236.11.5.1.1.3.33.0"   # Bandeja 1 (confirmado: 12283)
+    mp_pages:      "1.3.6.1.4.1.236.11.5.1.1.3.31.0"   # MP Tray (confirmado: 2405)
 
   # ── Estado ───────────────────────────────────────────────────────────────
   status:

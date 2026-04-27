@@ -84,7 +84,9 @@ type OIDs struct {
 	// Counters contiene los OIDs de contadores de páginas.
 	// Claves estándar: total_pages, mono_pages, color_pages,
 	//                  scan_pages, copy_pages, fax_pages, engine_cycles.
-	Counters map[string]string `yaml:"counters"`
+	// Al igual que Identification, cada clave acepta un string simple
+	// o una lista de OIDs de fallback (OIDList). El colector usa first-valid-wins.
+	Counters map[string]OIDList `yaml:"counters"`
 
 	// Status contiene los OIDs de estado del dispositivo.
 	// Claves estándar: device_status, printer_status, error_state.
