@@ -66,6 +66,45 @@ const htmlSyncThru = `
 </body></html>
 `
 
+// htmlSyncThruV2 simula countersView.sws del firmware SyncThru V2.
+//
+// Diferencias respecto al V1:
+//   - Tabla de totales: 4 columnas (sin "Informe"), primera fila con porcentajes.
+//   - Tabla de envíos: ID counterFaxList, filas Mono/Color (no por destino).
+const htmlSyncThruV2 = `
+<html><body>
+<table id='counterTotalList'>
+<table id='swstable_counterTotalList_headerTB'>
+<tr>
+<td>Uso total</td><td>Imprimir</td><td>Copiar</td><td>Impr. fax</td><td>Total</td>
+</tr></table>
+<table id='swstable_counterTotalList_contentTB' width='100%'>
+  <tr id='swstable_counterTotalList_expandTR_0'>
+    <td>Tasa Mono Eco</td><td>0% (0)</td><td>0% (0)</td><td>N/D</td><td>0% (0)</td>
+  </tr>
+  <tr id='swstable_counterTotalList_expandTR_1'>
+    <td>Dúplex (impresión a doble cara)</td><td>8824</td><td>4464</td><td>0</td><td>13288</td>
+  </tr>
+  <tr id='swstable_counterTotalList_expandTR_2'>
+    <td>Impresiones totales</td><td>233824</td><td>36090</td><td>0</td><td>269914</td>
+  </tr>
+</table></table>
+<table id='counterFaxList'>
+<table id='swstable_counterFaxList_headerTB'>
+<tr>
+<td>Uso envío</td><td>Envío de fax</td><td>Digitalizar</td><td>Total</td>
+</tr></table>
+<table id='swstable_counterFaxList_contentTB' width='100%'>
+  <tr id='swstable_counterFaxList_expandTR_0'>
+    <td>Mono</td><td>0</td><td>127124</td><td>127124</td>
+  </tr>
+  <tr id='swstable_counterFaxList_expandTR_1'>
+    <td>Color</td><td>0</td><td>6734</td><td>6734</td>
+  </tr>
+</table></table>
+</body></html>
+`
+
 // jsRawObject simula counters.json: objeto JS con claves sin comillas.
 const jsRawObject = `{
   GXI_BILLING_TOTAL_IMP_CNT: 14695,
@@ -334,6 +373,70 @@ func TestExtractAllNumbers_FullTotalTable(t *testing.T) {
 			t.Errorf("%s: got %d, want %d", tc.label, nums[tc.idx], tc.want)
 		}
 	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tests unitarios — parser SyncThru V2
+// ─────────────────────────────────────────────────────────────────────────────
+
+func TestParseSyncThruV2_OK(t *testing.T) {
+	c, err := parseSyncThruV2HTML("test", htmlSyncThruV2)
+	if err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	assertCounters(t, c, countersWant{
+		Total: 269914, Print: 233824, Copy: 36090, Scan: 133858,
+		Duplex: 13288, Simplex: 256626,
+	})
+}
+
+func TestParseSyncThruV2_Scan(t *testing.T) {
+	c, err := parseSyncThruV2HTML("test", htmlSyncThruV2)
+	if err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	// TotalScans = Mono(127124) + Color(6734)
+	if c.HardwareUsage.TotalScans != 133858 {
+		t.Errorf("TotalScans: got %d, want 133858", c.HardwareUsage.TotalScans)
+	}
+	if c.LogicalMatrix.ByDestination.TotalSend != 133858 {
+		t.Errorf("TotalSend: got %d, want 133858", c.LogicalMatrix.ByDestination.TotalSend)
+	}
+}
+
+func TestParseSyncThruV2_SimplexDerived(t *testing.T) {
+	c, _ := parseSyncThruV2HTML("test", htmlSyncThruV2)
+	// Simplex = Total(269914) - Duplex(13288) = 256626
+	if c.LogicalMatrix.ByMode.Simplex != 256626 {
+		t.Errorf("Simplex: got %d, want 256626", c.LogicalMatrix.ByMode.Simplex)
+	}
+}
+
+func TestParseSyncThruV2_AutoDetectFromV1Parser(t *testing.T) {
+	// parseSyncThruHTML debe delegar automáticamente a V2 al detectar counterFaxList.
+	c, err := parseSyncThruHTML("test", htmlSyncThruV2)
+	if err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	if c.Absolute.Total != 269914 {
+		t.Errorf("Absolute.Total: got %d, want 269914", c.Absolute.Total)
+	}
+}
+
+func TestFetch_SyncThruV2Endpoint(t *testing.T) {
+	srv := newSamsungServer(map[string]string{
+		"/sws.application/information/countersView.sws": htmlSyncThruV2,
+	})
+	defer srv.Close()
+
+	c, err := Get("samsung", hostOf(srv))
+	if err != nil {
+		t.Fatalf("error inesperado: %v", err)
+	}
+	assertCounters(t, c, countersWant{
+		Total: 269914, Print: 233824, Copy: 36090, Scan: 133858,
+		Duplex: 13288, Simplex: 256626,
+	})
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

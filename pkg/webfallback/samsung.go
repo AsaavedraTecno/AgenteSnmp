@@ -134,6 +134,13 @@ func parseLegacyHTML(ip, html string) (*Counters, error) {
 // extractAllNumbers() aspira todos los números entre tags de ambas tablas.
 
 func parseSyncThruHTML(ip, html string) (*Counters, error) {
+	// Detectar versión por el ID de la tabla de envíos.
+	// V2 (SyncThru con columnas Fax/Digitalizar por color) usa counterFaxList;
+	// V1 clásico usa counterSendList con una fila de destinos Email/FTP/SMB/USB.
+	if strings.Contains(html, "swstable_counterFaxList_contentTB") {
+		return parseSyncThruV2HTML(ip, html)
+	}
+
 	c := &Counters{}
 
 	// ── Tabla de totales ─────────────────────────────────────────────────────
@@ -142,7 +149,7 @@ func parseSyncThruHTML(ip, html string) (*Counters, error) {
 
 	if match := tableTotalRe.FindString(html); match != "" {
 		nums := extractAllNumbers(match)
-		// Layout esperado (15 valores = 3 filas × 5 columnas):
+		// Layout V1 (15 valores = 3 filas × 5 columnas):
 		//   idx  0- 4 → Mono Simple:         Impr, Copy, Fax, Inf, Total
 		//   idx  5- 9 → Dúplex:              Impr, Copy, Fax, Inf, Total
 		//   idx 10-14 → Impresiones Totales: Impr, Copy, Fax, Inf, Total
@@ -163,7 +170,7 @@ func parseSyncThruHTML(ip, html string) (*Counters, error) {
 
 	if match := tableSendRe.FindString(html); match != "" {
 		nums := extractAllNumbers(match)
-		// Layout esperado (6 valores = 1 fila × 6 columnas):
+		// Layout V1 (6 valores = 1 fila × 6 columnas):
 		//   Email, FTP, SMB, USB, Otros/PC, Total
 		n := len(nums)
 		if n >= 1 {
@@ -181,6 +188,73 @@ func parseSyncThruHTML(ip, html string) (*Counters, error) {
 
 	if c.Absolute.Total == 0 {
 		return c, fmt.Errorf("syncthru: no se encontraron contadores en el HTML de %s", ip)
+	}
+	return c, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Parser B2: SyncThru V2 — /sws.application/information/countersView.sws
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Firmware más nuevo. La tabla de totales tiene 4 columnas (sin "Informe") y
+// la primera fila muestra porcentajes ("Tasa Mono Eco") que no generan números.
+// La tabla de envíos usa el ID counterFaxList y filas Mono/Color en vez de
+// filas por destino (Email/FTP/SMB/USB).
+//
+// swstable_counterTotalList_contentTB — 3 filas × 4 cols = 8 números reales:
+//   Fila 0 (Tasa Mono Eco): "0% (0)", "N/D" → sin números
+//   Fila 1 (Dúplex):        idx 0-3  → Impr, Copy, Fax, Total
+//   Fila 2 (Totales):       idx 4-7  → Impr, Copy, Fax, Total
+//
+// swstable_counterFaxList_contentTB — 2 filas × 3 cols = 6 números:
+//   Fila 0 (Mono):  idx 0-2 → EnvíoFax, Digitalizar, Total
+//   Fila 1 (Color): idx 3-5 → EnvíoFax, Digitalizar, Total
+
+func parseSyncThruV2HTML(ip, html string) (*Counters, error) {
+	c := &Counters{}
+
+	// ── Tabla de totales ─────────────────────────────────────────────────────
+	tableTotalRe := regexp.MustCompile(
+		`(?i)(?s)id=['"]swstable_counterTotalList_contentTB['"].*?</table>`)
+
+	if match := tableTotalRe.FindString(html); match != "" {
+		nums := extractAllNumbers(match)
+		// La fila "Tasa Mono Eco" tiene valores porcentuales ("0% (0)", "N/D")
+		// que no matchean el extractor numérico → quedan 2 filas × 4 cols = 8 nums.
+		if len(nums) >= 8 {
+			c.LogicalMatrix.ByMode.Duplex       = nums[3] // Dúplex → Total
+			c.LogicalMatrix.ByFunction.Print    = nums[4] // Totales → Imprimir
+			c.LogicalMatrix.ByFunction.Copy     = nums[5] // Totales → Copiar
+			c.LogicalMatrix.ByFunction.FaxPrint = nums[6] // Totales → Impr. fax
+			c.Absolute.Total                    = nums[7] // Totales → Total
+			// Simplex se deriva: no aparece directamente en esta versión.
+			c.LogicalMatrix.ByMode.Simplex = nums[7] - nums[3]
+		}
+	}
+
+	// ── Tabla de envíos (counterFaxList) ─────────────────────────────────────
+	tableFaxRe := regexp.MustCompile(
+		`(?i)(?s)id=['"]swstable_counterFaxList_contentTB['"].*?</table>`)
+
+	if match := tableFaxRe.FindString(html); match != "" {
+		nums := extractAllNumbers(match)
+		// Layout: 2 filas (Mono, Color) × 3 cols (EnvíoFax, Digitalizar, Total).
+		//   idx 0-2 → Mono:  EnvíoFax, Digitalizar, Total
+		//   idx 3-5 → Color: EnvíoFax, Digitalizar, Total
+		// TotalScans = Mono Total + Color Total
+		if len(nums) >= 6 {
+			monoTotal  := nums[2]
+			colorTotal := nums[5]
+			c.HardwareUsage.TotalScans              = monoTotal + colorTotal
+			c.LogicalMatrix.ByDestination.TotalSend = monoTotal + colorTotal
+		} else if len(nums) >= 3 {
+			c.HardwareUsage.TotalScans              = nums[2]
+			c.LogicalMatrix.ByDestination.TotalSend = nums[2]
+		}
+	}
+
+	if c.Absolute.Total == 0 {
+		return c, fmt.Errorf("syncthruV2: no se encontraron contadores en el HTML de %s", ip)
 	}
 	return c, nil
 }
