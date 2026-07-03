@@ -35,7 +35,7 @@ Source: "AgentSNMP.exe"; DestDir: "{app}"; Flags: ignoreversion
 ; Copiamos el icono por si el sistema necesita refrescar la caché
 Source: "{#MyAppIcon}"; DestDir: "{app}"; Flags: ignoreversion
 
-Source: "C:\Users\asaavedra\Desktop\agentsnmpppp\profiles\*"; DestDir: "{app}\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\asaavedra\Desktop\AgenteSNMP\AgenteSnmp\profiles\*"; DestDir: "{app}\profiles"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Dirs]
 ; Carpeta para logs y config encriptada

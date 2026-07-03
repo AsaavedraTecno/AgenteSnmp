@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/md5"
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
@@ -16,8 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"crypto/sha256"
 	_ "embed"
 
+	"gopkg.in/natefinch/lumberjack.v2"
 	"github.com/kardianos/service"
 
 	"fyne.io/fyne/v2"
@@ -32,6 +33,7 @@ import (
 	"github.com/asaavedra/agent-snmp/pkg/profile"
 	"github.com/asaavedra/agent-snmp/pkg/remote"
 	"github.com/asaavedra/agent-snmp/pkg/runner"
+	"github.com/asaavedra/agent-snmp/pkg/scanner"
 	"github.com/asaavedra/agent-snmp/pkg/telemetry"
 	"github.com/asaavedra/agent-snmp/pkg/uploader"
 )
@@ -212,6 +214,7 @@ func runGUI(s service.Service) {
 		cfg.Uploader.Enabled = true
 		cfg.Uploader.AgentKey = encKey
 		cfg.Uploader.CloudURL = encURL
+		cfg.Uploader.SkipTLSVerify = false // Seguro por defecto
 
 		config.SaveConfig(cfg, configPath)
 
@@ -349,7 +352,11 @@ func (p *program) run() {
 
 	for {
 		cfg, err = config.LoadConfig(configPath)
-		if err == nil && cfg.Uploader.AgentKey != "" {
+		if err != nil {
+			log.Printf("⚠️ Esperando configuración... no se pudo cargar %s: %v", configPath, err)
+		} else if cfg.Uploader.AgentKey == "" {
+			log.Printf("⚠️ Esperando configuración... AgentKey está vacío en %s", configPath)
+		} else {
 			decKey, errK := decrypt(cfg.Uploader.AgentKey)
 			decURL, errU := decrypt(cfg.Uploader.CloudURL)
 
@@ -361,27 +368,52 @@ func (p *program) run() {
 					finalURL = "https://tdmonitor.cl"
 				}
 				break
+			} else {
+				log.Printf("❌ Error de seguridad: No se pudo descifrar el AgentKey. ¿El archivo %s está corrupto o en texto plano?", configPath)
 			}
 		}
 		time.Sleep(10 * time.Second)
 	}
 
 	if cfg.Uploader.Enabled {
-		go uploader.StartUploader(uploader.Config{
-			Enabled:        true,
-			CloudURL:       finalURL,
-			AgentKey:       finalKey,
-			QueuePath:      sharedDir,
-			IntervalSecs:   30,
-			MaxBackoffSecs: 300,
+		uploader.StartUploader(context.Background(), func() uploader.Config {
+			// Volvemos a cargar o usamos la actual
+			c, _ := config.LoadConfig(configPath)
+			k, _ := decrypt(c.Uploader.AgentKey)
+			u, _ := decrypt(c.Uploader.CloudURL)
+			if u == "" {
+				u = "https://tdmonitor.cl"
+			}
+			return uploader.Config{
+				Enabled:        c.Uploader.Enabled,
+				CloudURL:       u,
+				AgentKey:       k,
+				QueuePath:      sharedDir,
+				IntervalSecs:   30,
+				MaxBackoffSecs: 300,
+				SkipTLSVerify:  c.Uploader.SkipTLSVerify,
+				BatchSize:      c.Uploader.BatchSize,
+			}
 		})
 	}
 
+	// Detectar IP propia: config override tiene prioridad; si no, UDP dial.
+	agentIP := cfg.Agent.IP
+	if agentIP == "" {
+		agentIP = scanner.GetAgentIP()
+	}
+	if agentIP != "" {
+		log.Printf("🌐 IP del agente: %s", agentIP)
+	}
+
 	agentSource := telemetry.AgentSource{
-		AgentID:  "AGT-" + getHostname(),
-		Hostname: getHostname(),
-		OS:       "windows",
-		Version:  "1.0.0",
+		AgentID:          "AGT-" + getHostname(),
+		Hostname:         getHostname(),
+		OS:               "windows",
+		Version:          "1.0.0",
+		AgentIP:          agentIP,
+		CollectionMethod: "snmp",
+		ConnectedVia:     "network",
 	}
 	// stateDir vive junto al ejecutable (no en la cola del uploader).
 	// El servicio hace os.Chdir(exeDir) al arrancar, así que "state"
@@ -389,7 +421,7 @@ func (p *program) run() {
 	exeDir := filepath.Dir(func() string { p, _ := os.Executable(); return p }())
 	stateDir := filepath.Join(exeDir, "state")
 	scanRunner := runner.NewRunner(agentSource, sharedDir, stateDir)
-	remoteClient := remote.NewClient(finalURL, finalKey)
+	remoteClient := remote.NewClient(finalURL, finalKey, cfg.Uploader.SkipTLSVerify)
 
 	// Cargar perfiles YAML una sola vez (junto al ejecutable o en sharedDir)
 	profilesDir := filepath.Join(filepath.Dir(sharedDir), AppName, "profiles")
@@ -407,31 +439,62 @@ func (p *program) run() {
 	}
 
 	for {
+		log.Println("🔍 Consultando instrucciones al servidor...")
 		remoteCfg, err := remoteClient.GetConfig()
-		if err == nil && remoteCfg.Active {
-			// Escaneo con perfiles ahora cargados correctamente
-			scanRunner.Run(context.Background(), runner.JobParams{
-				IPRanges:      remoteCfg.IPRanges,
-				Community:     remoteCfg.Community,
-				SNMPVersion:   remoteCfg.Version,
-				SNMPPort:      161,
-				Timeout:       2000 * time.Millisecond,
-				Retries:       1,
-				MaxConcurrent: remoteCfg.MaxConcurrent,
-				DelayBetween:  50 * time.Millisecond,
-			})
-			time.Sleep(time.Duration(remoteCfg.ScanInterval) * time.Second)
-		} else {
+		if err != nil {
+			log.Printf("❌ Error consultando instrucciones: %v", err)
 			time.Sleep(60 * time.Second)
+			continue
 		}
+
+		if !remoteCfg.Active {
+			log.Println("⏸️ El agente está marcado como INACTIVO en el servidor (active: false).")
+			time.Sleep(60 * time.Second)
+			continue
+		}
+
+		// Fallback: Si la API mandó el formato viejo (string "192.168.1.1-254") y no el array de objetos
+		rangesToProcess := remoteCfg.IPRanges
+		if len(rangesToProcess) == 0 && remoteCfg.IPRange != "" {
+			parts := strings.Split(remoteCfg.IPRange, "-")
+			if len(parts) == 2 {
+				rangesToProcess = append(rangesToProcess, scanner.IPRangeConfig{
+					IPFrom: strings.TrimSpace(parts[0]),
+					IPTo:   strings.TrimSpace(parts[1]),
+					Active: true,
+				})
+			}
+		}
+
+		// Escaneo con perfiles ahora cargados correctamente
+		log.Printf("🚀 Iniciando barrido programado (Intervalo: %d s)...", remoteCfg.ScanInterval)
+		err = scanRunner.Run(context.Background(), runner.JobParams{
+			IPRanges:      rangesToProcess,
+			AgentIP:       agentIP,
+			Community:     remoteCfg.Community,
+			SNMPVersion:   remoteCfg.Version,
+			SNMPPort:      161,
+			Timeout:       3000 * time.Millisecond,
+			Retries:       2,
+			MaxConcurrent: remoteCfg.MaxConcurrent,
+			DelayBetween:  50 * time.Millisecond,
+		})
+		if err != nil {
+			log.Printf("❌ Error durante el barrido: %v", err)
+		} else {
+			// ✅ Notificar al uploader que hay datos listos para enviar
+			uploader.TriggerUpload()
+		}
+
+		log.Printf("😴 Esperando %d segundos para el próximo ciclo...", remoteCfg.ScanInterval)
+		time.Sleep(time.Duration(remoteCfg.ScanInterval) * time.Second)
 	}
 }
 
 // --- CRIPTOGRAFÍA ---
 func createHash(key string) string {
-	hasher := md5.New()
-	hasher.Write([]byte(key))
-	return hex.EncodeToString(hasher.Sum(nil))
+	hash := sha256.Sum256([]byte(key))
+	return hex.EncodeToString(hash[:])
 }
 
 func encrypt(data string) (string, error) {
@@ -482,8 +545,13 @@ func maskKey(key string) string {
 }
 
 func setupFileLogging() {
-	f, _ := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	log.SetOutput(f)
+	log.SetOutput(&lumberjack.Logger{
+		Filename:   logPath,
+		MaxSize:    10, // MB
+		MaxBackups: 3,
+		MaxAge:     7,  // días
+		Compress:   true,
+	})
 }
 
 func getHostname() string { h, _ := os.Hostname(); return h }
